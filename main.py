@@ -1,81 +1,62 @@
 import pandas as pd
-import urllib.parse
-import time
+from neonize.client import NewClient
+from neonize.events import ConnectedEv
+from neonize.utils import show_qr_sync  # ← Exibe o QR como imagem
+import asyncio
+import os
+import random
 from datetime import datetime
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+# Carrega os clientes da planilha
+df = pd.read_excel("data/ClientesTestes.xlsx")
 
-# === CONFIGURAÇÕES ===
-excel_path = 'data/ClientesTestes.xlsx'
-log_path = 'envio_log.txt'
-tempo_entre_envios = 150  # 2 minutos e 30 segundos
+# Garante que a pasta de logs existe
+os.makedirs("logs", exist_ok=True)
 
-# Mensagem base com personalização
-mensagem_base = (
-    "💖 Oi, {nome}! Tudo bem?\n\n"
-    "A gente está com saudades de ver você por aqui! 🥹\n"
-    "O Dia das Mães está chegando, e essa é a hora perfeita pra encontrar um presente marcante – "
-    "com aquele brilho especial que só a Guzzatti tem! ✨\n\n"
-    "Corre lá no nosso site e aproveita as novidades (tem coisa linda e com condições especiais 😍)\n\n"
-    "🛍️ www.guzzatti.com.br\n"
-    "🎁 Não deixa pra última hora!\n\n"
-    "Com carinho,\n"
-    "Equipe Guzzatti 🤍"
-)
+# Função para salvar logs de envio
+def log_envio(nome, telefone, status):
+    with open("logs/log_envio.txt", "a", encoding="utf-8") as f:
+        now = datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
+        f.write(f"{now} | {telefone} | {nome} | {status}\n")
 
-# === CONFIGURA O CHROME COM SEU PERFIL ===
-chrome_options = Options()
-chrome_options.add_argument(r"--user-data-dir=C:/Users/Usuario/AppData/Local/Google/Chrome/User Data")
-chrome_options.add_argument(r"--profile-directory=Profile 10")
-chrome_options.add_experimental_option("detach", True)
+# Gera a mensagem personalizada
+def gerar_mensagem(nome):
+    return f"""💖 Oi, {nome}! Tudo bem?
 
+A gente está com saudades de ver você por aqui! 🥹
+O Dia das Mães está chegando, e essa é a hora perfeita pra encontrar um presente marcante – com aquele brilho especial que só a Guzzatti tem! ✨
 
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+Corre lá no nosso site e aproveita as novidades (tem coisa linda e com condições especiais 😍)
 
-# Abre o WhatsApp Web com a sessão do seu usuário
-driver.get("https://web.whatsapp.com")
-input("✅ Pressione Enter após verificar que o WhatsApp Web carregou e está logado...")
+🛍️ www.guzzatti.com.br
+🎁 Não deixa pra última hora!
 
-# Carrega os dados da planilha
-df = pd.read_excel(excel_path)
+Com carinho,
+Equipe Guzzatti 🤍"""
 
-# Loop de envio
-for index, row in df.iterrows():
-    nome = row['Client Name']
-    numero = str(int(row['Phone']))
-    hora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+# Cria o cliente do WhatsApp
+client = NewClient("session_guzzatti.sqlite3")
 
-    mensagem = mensagem_base.format(nome=nome)
-    mensagem_encoded = urllib.parse.quote(mensagem)
+@client.event(ConnectedEv)
+async def ao_conectar(client: NewClient, _: ConnectedEv):
+    print("✅ Conectado ao WhatsApp. Iniciando envios...\n")
 
-    try:
-        # Abre o link direto do WhatsApp Web com mensagem
-        driver.get(f"https://web.whatsapp.com/send?phone={numero}&text={mensagem_encoded}")
+    for _, row in df.iterrows():
+        nome = row["Client Name"]
+        telefone = str(row["Phone"])
+        mensagem = gerar_mensagem(nome)
 
-        # Espera até o campo de mensagem aparecer
-        campo_msg = WebDriverWait(driver, 30).until(
-            EC.presence_of_element_located((By.XPATH, '//div[@role="textbox"]'))
-        )
+        try:
+            await client.send_message(telefone, mensagem)
+            log_envio(nome, telefone, "ENVIADO")
+            print(f"✅ Mensagem enviada para {nome} ({telefone})")
+        except Exception as e:
+            log_envio(nome, telefone, f"ERRO: {e}")
+            print(f"❌ Erro ao enviar para {nome} ({telefone}): {e}")
 
-        # Pressiona Enter para enviar a mensagem
-        campo_msg.send_keys("\n")
+        delay = random.randint(90, 150)
+        print(f"⏳ Aguardando {delay} segundos antes do próximo envio...\n")
+        await asyncio.sleep(delay)
 
-        log_msg = f"✅ [{hora}] Mensagem enviada para {nome} ({numero})"
-        print(log_msg)
-
-    except Exception as e:
-        log_msg = f"❌ [{hora}] Erro ao enviar para {nome} ({numero}): {e}"
-        print(log_msg)
-
-    # Salva o log
-    with open(log_path, 'a', encoding='utf-8') as f:
-        f.write(log_msg + '\n')
-
-    # Espera antes do próximo envio
-    time.sleep(tempo_entre_envios)
+# Conecta exibindo o QR Code como imagem
+client.connect(show_qr=show_qr_sync)
