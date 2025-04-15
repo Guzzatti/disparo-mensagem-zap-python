@@ -1,3 +1,4 @@
 neonize
 pandas
 openpyxl
+qrcode[pil]
