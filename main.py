@@ -1,11 +1,16 @@
 import pandas as pd
 from neonize.client import NewClient
 from neonize.events import ConnectedEv
-from neonize.utils import show_qr_sync  # ← Exibe o QR como imagem
 import asyncio
 import os
 import random
 from datetime import datetime
+# import qrcode  ← Comentado pois o QR ainda não pode ser interceptado
+
+# [Opcional futuramente] Função para exibir o QR Code como imagem
+# def mostrar_qr_como_imagem(qr_string: str):
+#     img = qrcode.make(qr_string)
+#     img.show()
 
 # Carrega os clientes da planilha
 df = pd.read_excel("data/ClientesTestes.xlsx")
@@ -34,7 +39,7 @@ Corre lá no nosso site e aproveita as novidades (tem coisa linda e com condiç�
 Com carinho,
 Equipe Guzzatti 🤍"""
 
-# Cria o cliente do WhatsApp
+# Cria o cliente WhatsApp
 client = NewClient("session_guzzatti.sqlite3")
 
 @client.event(ConnectedEv)
@@ -58,5 +63,5 @@ async def ao_conectar(client: NewClient, _: ConnectedEv):
         print(f"⏳ Aguardando {delay} segundos antes do próximo envio...\n")
         await asyncio.sleep(delay)
 
-# Conecta exibindo o QR Code como imagem
-client.connect(show_qr=show_qr_sync)
+# Conecta usando QR no terminal (padrão)
+client.connect()
